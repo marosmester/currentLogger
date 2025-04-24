@@ -39,7 +39,7 @@
 typedef class HardwareSPI SPIClass;
 #endif
 
-#include <Adafruit_GFX.h>
+#include "../Adafruit_GFX_Library/Adafruit_GFX.h" //<Adafruit_GFX.h>
 #include <SPI.h>
 #include <Wire.h>
 

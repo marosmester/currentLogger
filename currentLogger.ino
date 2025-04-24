@@ -1,12 +1,13 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SD.h>
-#include <Adafruit_INA219.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include "src/Adafruit_INA219/Adafruit_INA219.h"
+#include "src/Adafruit_GFX_Library/Adafruit_GFX.h"
+#include "src/Adafruit_SSD1306/Adafruit_SSD1306.h"
 
 // Serial 
-#define WAIT_TIME 20 // seconds
+#define WAIT_TIME 2 // seconds
+#define WAIT_TIME_SERIAL 5
 
 // OLED 128x64 display:
 // On an arduino MEGA 2560: 20(SDA), 21(SCL)
@@ -17,8 +18,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Current sensors:
-Adafruit_INA219 ina1;
-Adafruit_INA219 ina2;
+Adafruit_INA219 ina1(0x40);   // write it like this, with I2C address in the brackets
+Adafruit_INA219 ina2(0x41);
 
 // SD card:
 /*
@@ -40,10 +41,12 @@ Genreal notes:
 String fname; // current file name
 
 void setup() {
+  delay(WAIT_TIME*1000);
+
   // Initialize Serial
   Serial.begin(115200);   // Only for potential debugging, Serial isn't required to solve the task
   int cnt = 0;
-  while (!Serial && cnt < WAIT_TIME) {
+  while (!Serial && cnt < WAIT_TIME_SERIAL) {
     delay(1000);
     cnt++;
     Serial.begin(115200); 
@@ -51,7 +54,7 @@ void setup() {
   if (Serial) Serial.println("Serial initialized.");
 
   // Initialize the OLED display
-  while (!display.begin(SSD1306_EXTERNALVCC, SCREEN_ADDRESS)) {      // <------------- try swicthing SSD1306_EXTERNALVCC to SSD1306_SWITCHCAPVCC if OLED doesn't light up
+  while (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {      // <------------- try swicthing SSD1306_EXTERNALVCC to SSD1306_SWITCHCAPVCC if OLED doesn't light up
     Serial.println("OLED display: SSD1306 allocation failed ... retrying");
     delay(500);
   }
@@ -77,32 +80,46 @@ void setup() {
   
   // Scan the SD card for the filename with the highest number:
   File root = SD.open("/");
-  unsigned int new_num = highestFileNumber(root) + 1;
-  fname = "DATA" + String(new_num) + ".csv";
+  if (root) {
+    Serial.println("SD card root dir opened successfullly.");
+    unsigned int new_num = highestFileNumber(root) + 1;
+    Serial.print("new file number= ");
+    Serial.println(new_num);
+    fname = "DATA" + String(new_num) + ".csv";
+  } else {
+    Serial.println("Failed to open SD card root dir.");
+  }
   
   // Open a new csv file
   File dataFile = SD.open(fname, FILE_WRITE);   // FILE_WRITE opens the file for appending
   if (dataFile) {     // if the file opened okay 
     Serial.println("CSV file opened successfully.");
-    dataFile.println("Time,Current_1,Current_2");
+    dataFile.println("Time,Current_1,Current_2,Voltage_1,Voltage_2");
     dataFile.close();
   } else {
     Serial.println("Failed to open CSV file.");
   }
+
+  // setup internal LED as output
+  pinMode(LED_BUILTIN, OUTPUT);
+
   Serial.println();
 }
 
 void loop() {
   float current_1 = 0;  //mA
   float current_2 = 0;  //mA
+  float voltage_1 = 0;  // V
+  float voltage_2 = 0;  // V
   current_1 = ina1.getCurrent_mA();     // based on the implementation, it doesn't seem like getCurrent_mA would produce noisy readings
   current_2 = ina2.getCurrent_mA();     // so I don't think value filtering is required
-  unsigned long time = millis()/1000;
-  display_currents(time, current_1, current_2);
-  write_currents(time, current_1, current_2);
+  voltage_1 = ina1.getBusVoltage_V();
+  voltage_2 = ina2.getBusVoltage_V();
+  unsigned long time = millis()/1000 - WAIT_TIME/1;
+  display_currents(time, current_1, current_2, voltage_1, voltage_2);
+  write_currents(time, current_1, current_2, voltage_1, voltage_2);
   delay(1000);  // measurement every 1 sec
 }
-
 
 //---Helper Functions-------------------------------------------------------------------- 
 
@@ -129,31 +146,47 @@ unsigned int highestFileNumber(File dir) {
   return num;
 }
 
-void display_currents(unsigned long time, float c1, float c2) {
+void display_currents(unsigned long time, float i1, float i2, float u1, float u2) {
   // prepare:
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 10); // This needs to be tested on the real display - I did not get to do it  
-  //display.setTextSize(2); // Draw 2X-scale text
+  display.setTextSize(1);
+  display.setCursor(0, 10);  
+
   // write:
+  display.print("t= ");
   display.print(time);
-  display.print(" ");
-  display.print(c1, 2);     // number of decimal places
-  display.print(" mA, ");
-  display.print(c2, 2);     // number of decimal places
+  display.println(" s");
+  display.print("I1= ");
+  display.print(i1, 2);     // number of decimal places
   display.println(" mA");
+  display.print("I2= ");
+  display.print(i2, 2);     // number of decimal places
+  display.println(" mA");
+  display.print("U1= ");
+  display.print(u1, 2);     // number of decimal places
+  display.println(" V");
+  display.print("U2= ");
+  display.print(u2, 2);     // number of decimal places
+  display.println(" V");
   display.display();
 }
 
-void write_currents(unsigned long time, float c1, float c2) {
+void write_currents(unsigned long time, float i1, float i2, float u1, float u2) {
+  digitalWrite(LED_BUILTIN, HIGH);
   File dataFile = SD.open(fname, FILE_WRITE);
   if (dataFile) {
     if (dataFile.size() < MAX_SIZE) {
       dataFile.print(time);
       dataFile.print(",");
-      dataFile.print(c1, 2);
+      dataFile.print(i1, 2);
       dataFile.print(",");
-      dataFile.println(c2, 2);
+      dataFile.print(i2, 2);
+      dataFile.print(",");
+      dataFile.print(u1, 2);
+      dataFile.print(",");
+      dataFile.println(u2, 2);
+      //dataFile.print(",");
     } else {
       Serial.println("Could not write to SD card, max file size reached.");   // maybe would be nicer to display it on the OLED
     }
@@ -161,4 +194,5 @@ void write_currents(unsigned long time, float c1, float c2) {
   } else{
     Serial.println("Could not detect SD card.");
   }
+  digitalWrite(LED_BUILTIN, LOW);
 }

@@ -18,8 +18,8 @@
 #define _LIB_ADAFRUIT_INA219_
 
 #include "Arduino.h"
-#include <Adafruit_BusIO_Register.h>
-#include <Adafruit_I2CDevice.h>
+#include "../Adafruit_BusIO/Adafruit_BusIO_Register.h"      //<Adafruit_BusIO_Register.h>
+#include "../Adafruit_BusIO/Adafruit_I2CDevice.h"           //<Adafruit_I2CDevice.h>
 #include <Wire.h>
 
 /** calculated I2C address: 0 = GND, 1 = V+ **/
