@@ -69,7 +69,9 @@ void setup() {
     Serial.println("Failed to find INA219 chip: ina2 ... retrying");
     delay(500);
   }
-  Serial.println("Both sensors are initialized.");    
+  Serial.println("Both sensors are initialized.");
+  ina1.setCalibration_16V_400mA();
+  ina2.setCalibration_16V_400mA();    
 
   // Initialize SD card:
   while (!SD.begin(53)) {  // CS pin
